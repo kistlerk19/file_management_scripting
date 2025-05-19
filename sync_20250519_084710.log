@@ -1,0 +1,21 @@
+File Synchronization Log - Started at Mon May 19 08:47:10 GMT 2025
+Source: /Users/verlock/workflows/bash_file_management/sync_dir1
+Destination: /Users/verlock/workflows/bash_file_management/sync_dir2
+Conflict Strategy: newest
+Dry Run: false
+Exclude Pattern: 
+-----------------------------------
+2025-05-19 08:47:10 [INFO] Synchronizing from source to destination...
+2025-05-19 08:47:10 [INFO] Copied file: main.py (src-to-dest)
+2025-05-19 08:47:10 [INFO] Finished src-to-dest synchronization: processed 0 files, copied 0, skipped 0, conflicts 0
+2025-05-19 08:47:10 [INFO] Synchronizing from destination to source...
+2025-05-19 08:47:10 [INFO] Files are identical: main.py
+2025-05-19 08:47:10 [INFO] Finished dest-to-src synchronization: processed 0 files, copied 0, skipped 0, conflicts 0
+2025-05-19 08:47:10 [INFO] Checking for files to delete or copy...
+2025-05-19 08:47:10 [INFO] Checking for files in dest that don't exist in src...
+2025-05-19 08:47:10 [WARNING] File exists in dest but not in src: test.py
+2025-05-19 08:47:10 [INFO] Copying file based on newest strategy: test.py
+2025-05-19 08:47:10 [INFO] Copied file to src: test.py
+2025-05-19 08:47:10 [INFO] Checking for files in src that don't exist in dest...
+2025-05-19 08:47:10 [INFO] Deletion synchronization complete. Files deleted: 0
+2025-05-19 08:47:10 [INFO] Synchronization completed successfully

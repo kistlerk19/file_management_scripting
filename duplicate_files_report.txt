@@ -1,0 +1,17 @@
+
+Duplicate Group 1:
+Original: test_duplicates/file3_copy.txt
+Duplicate 1: test_duplicates/file3.txt
+Size: 40 bytes (0 KB)
+
+Duplicate Group 2:
+Original: test_duplicates/another_copy_of_file1.txt
+Duplicate 1: test_duplicates/file with spaces.txt
+Duplicate 2: test_duplicates/file1_duplicate.txt
+Duplicate 3: test_duplicates/file1.txt
+Size: 15 bytes (0 KB)
+
+Duplicate Group 3:
+Original: test_duplicates/random1_copy.bin
+Duplicate 1: test_duplicates/random1.bin
+Size: 1048576 bytes (1024 KB)

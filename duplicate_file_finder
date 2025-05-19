@@ -1,0 +1,289 @@
+#!/usr/bin/env bash
+
+# Duplicate File Finder
+# This script finds duplicate files in a specified directory based on file size and content.
+
+# Detect OS type for compatible commands
+OS_TYPE=$(uname)
+
+# gettingfile size in a cross-platform way Darwin for macos because usage of stat is different on macos
+get_file_size() {
+    if [ "$OS_TYPE" = "Darwin" ]; then
+        stat -f %z "$1"
+    else
+        stat -c %s "$1"
+    fi
+}
+
+# usage instructions
+display_usage() {
+    echo "Usage: $0 [directory_path]"
+    echo "If no directory is specified, the current directory will be used."
+    echo
+}
+
+# if help option is provided
+if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+    display_usage
+    exit 0
+fi
+
+# determine directory to scan
+if [ -z "$1" ]; then
+    DIR="."
+    echo "No directory specified. Scanning current directory."
+else
+    DIR="$1"
+    # if the specified directory exists
+    if [ ! -d "$DIR" ]; then
+        echo "Error: Directory '$DIR' not found."
+        exit 1
+    fi
+fi
+
+# create temporary directory for the script
+TEMP_DIR=$(mktemp -d)
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to create temporary directory."
+    exit 1
+fi
+
+# cleanup function to remove temporary files
+cleanup() {
+    rm -rf "$TEMP_DIR"
+    echo -e "\nCleaning up temporary files..."
+}
+
+# Register cleanup function to be called on exit
+trap cleanup EXIT
+
+echo "Finding duplicate files in: $DIR"
+
+# group files by size
+echo "Grouping files by size..."
+find "$DIR" -type f -not -empty -print0 | while IFS= read -r -d $'\0' file; do
+    size=$(get_file_size "$file")
+    echo "$size|$file" >> "$TEMP_DIR/sizes.txt"
+done
+
+# check if any files were found
+if [ ! -f "$TEMP_DIR/sizes.txt" ] || [ ! -s "$TEMP_DIR/sizes.txt" ]; then
+    echo "No files found in directory '$DIR'."
+    exit 0
+fi
+
+# Sort the files by size
+sort -n "$TEMP_DIR/sizes.txt" > "$TEMP_DIR/sizes_sorted.txt"
+
+# group files by size 
+echo "Identifying duplicates based on size..."
+
+current_size=""
+file_count=0
+while IFS="|" read -r size file; do
+    if [ "$size" != "$current_size" ]; then
+        # If we were processing a group with multiple files, mark it as a potential group
+        if [ $file_count -gt 1 ]; then
+            echo "size_group_$current_size" >> "$TEMP_DIR/potential_groups.txt"
+        fi
+        current_size="$size"
+        file_count=1
+        echo "$size" > "$TEMP_DIR/size_group_$size"
+    else
+        file_count=$((file_count + 1))
+    fi
+    echo "$file" >> "$TEMP_DIR/size_group_$size"
+done < "$TEMP_DIR/sizes_sorted.txt"
+
+# the last group
+if [ $file_count -gt 1 ]; then
+    echo "size_group_$current_size" >> "$TEMP_DIR/potential_groups.txt"
+fi
+
+# if there are any potential duplicates
+if [ ! -f "$TEMP_DIR/potential_groups.txt" ] || [ ! -s "$TEMP_DIR/potential_groups.txt" ]; then
+    echo "No potential duplicate files found."
+    exit 0
+fi
+
+# for each size group with more than one file, compare by content
+echo "Computing file hashes to find exact duplicates..."
+
+while IFS= read -r group_file; do
+    size=$(head -n 1 "$TEMP_DIR/$group_file")
+    echo "Checking files of size $size bytes..."
+    
+    # Skip the first line (size) and process the files
+    tail -n +2 "$TEMP_DIR/$group_file" | while IFS= read -r file; do
+        # Use quotes to handle filenames with spaces
+        if [ -f "$file" ]; then
+            md5=$(md5sum "$file" | cut -d ' ' -f1)
+            echo "$md5|$file" >> "$TEMP_DIR/hashes.txt"
+        fi
+    done
+done < "$TEMP_DIR/potential_groups.txt"
+
+# If there are no hashes file, there are no potential duplicates
+if [ ! -f "$TEMP_DIR/hashes.txt" ] || [ ! -s "$TEMP_DIR/hashes.txt" ]; then
+    echo "No duplicate files found."
+    exit 0
+fi
+
+# Sort hashes to group identical files
+sort "$TEMP_DIR/hashes_sorted.txt" 2>/dev/null || sort "$TEMP_DIR/hashes.txt" > "$TEMP_DIR/hashes_sorted.txt"
+
+# group files by hash and identify duplicates
+echo "Identifying duplicate files..."
+dup_count=0
+group_count=0
+total_space=0
+
+# Processing hash groups
+current_hash=""
+hash_files=()
+
+while IFS="|" read -r hash file; do
+    if [ "$hash" != "$current_hash" ]; then
+        # Process previous group if it had duplicates
+        if [ ${#hash_files[@]} -gt 1 ]; then
+            echo "$current_hash" > "$TEMP_DIR/hash_group_$current_hash"
+            for f in "${hash_files[@]}"; do
+                echo "$f" >> "$TEMP_DIR/hash_group_$current_hash"
+            done
+            echo "hash_group_$current_hash" >> "$TEMP_DIR/duplicate_groups.txt"
+        fi
+        
+        # Start new group
+        current_hash="$hash"
+        hash_files=()
+    fi
+    
+    # Add file to current hash group
+    hash_files+=("$file")
+done < "$TEMP_DIR/hashes_sorted.txt"
+
+# Process the last hash group
+if [ ${#hash_files[@]} -gt 1 ]; then
+    echo "$current_hash" > "$TEMP_DIR/hash_group_$current_hash"
+    for f in "${hash_files[@]}"; do
+        echo "$f" >> "$TEMP_DIR/hash_group_$current_hash"
+    done
+    echo "hash_group_$current_hash" >> "$TEMP_DIR/duplicate_groups.txt"
+fi
+
+# Check if we found any duplicate groups
+if [ ! -f "$TEMP_DIR/duplicate_groups.txt" ] || [ ! -s "$TEMP_DIR/duplicate_groups.txt" ]; then
+    echo "No duplicate files found."
+    exit 0
+fi
+
+# Process duplicate groups and create report
+> "$TEMP_DIR/duplicates.txt"
+while IFS= read -r group_file; do
+    group_count=$((group_count + 1))
+    
+    hash=$(head -n 1 "$TEMP_DIR/$group_file")
+    files=()
+    
+    # Get list of files in this hash group
+    while IFS= read -r file; do
+        files+=("$file")
+    done < <(tail -n +2 "$TEMP_DIR/$group_file")
+    
+    # Calculate file size (using the first file)
+    file_size=$(get_file_size "${files[0]}")
+    wasted_space=$((file_size * (${#files[@]} - 1)))
+    total_space=$((total_space + wasted_space))
+    
+    # Output group information
+    {
+        echo -e "\nDuplicate Group $group_count:"
+        echo "Original: ${files[0]}"
+        
+        for ((i=1; i<${#files[@]}; i++)); do
+            echo "Duplicate $i: ${files[$i]}"
+            dup_count=$((dup_count + 1))
+        done
+        
+        echo "Size: $file_size bytes ($(($file_size / 1024)) KB)"
+    } >> "$TEMP_DIR/duplicates.txt"
+done < "$TEMP_DIR/duplicate_groups.txt"
+
+# Display results
+echo -e "\n--- Duplicate Files Report ---"
+echo "Found $dup_count duplicate files in $group_count groups."
+echo "Wasted space: $total_space bytes ($(($total_space / 1024)) KB)"
+
+# Display the duplicates
+cat "$TEMP_DIR/duplicates.txt"
+
+# Save the duplicate info to a file in the current directory
+cp "$TEMP_DIR/duplicates.txt" "./duplicate_files_report.txt"
+echo -e "\nDuplicate file report saved to: $(pwd)/duplicate_files_report.txt"
+
+# Offer options if duplicates were found
+if [ "$dup_count" -gt 0 ]; then
+    echo -e "\nWhat would you like to do with the duplicate files?"
+    echo "1: Delete all duplicates (keep originals)"
+    echo "2: Move duplicates to a separate folder"
+    echo "3: Do nothing"
+    echo -n "Enter your choice (1-3): "
+    read choice
+    
+    case $choice in
+        1)
+            echo "Deleting all duplicate files..."
+            sed -n 's/^Duplicate [0-9]\+: //p' "$TEMP_DIR/duplicates.txt" | while IFS= read -r file; do
+                echo "Deleting: $file"
+                rm -f "$file"
+            done
+            echo "Deletion complete."
+            ;;
+        2)
+            echo -n "Enter destination folder for duplicates: "
+            read dest_dir
+            
+            # Create destination directory if it doesn't exist
+            if [ ! -d "$dest_dir" ]; then
+                mkdir -p "$dest_dir"
+                if [ $? -ne 0 ]; then
+                    echo "Error: Failed to create directory '$dest_dir'."
+                    exit 1
+                fi
+                echo "Created directory: $dest_dir"
+            fi
+            
+            echo "Moving duplicate files to $dest_dir..."
+            sed -n 's/^Duplicate [0-9]\+: //p' "$TEMP_DIR/duplicates.txt" | while IFS= read -r file; do
+                filename=$(basename "$file")
+                # Handle filename conflicts by adding a suffix
+                if [ -f "$dest_dir/$filename" ]; then
+                    counter=1
+                    base_name=$(echo "$filename" | sed 's/\.[^.]*$//')
+                    extension=$(echo "$filename" | grep -o '\.[^.]*$' || echo '')
+                    
+                    while [ -f "$dest_dir/${base_name}_${counter}${extension}" ]; do
+                        counter=$((counter + 1))
+                    done
+                    
+                    target_name="${base_name}_${counter}${extension}"
+                else
+                    target_name="$filename"
+                fi
+                
+                echo "Moving: $file to $dest_dir/$target_name"
+                mv "$file" "$dest_dir/$target_name"
+            done
+            echo "Move operation complete."
+            ;;
+        3)
+            echo "No changes made to your files."
+            ;;
+        *)
+            echo "Invalid choice. No changes made to your files."
+            ;;
+    esac
+fi
+
+echo -e "\nDuplicate file scan completed."
+exit 0
