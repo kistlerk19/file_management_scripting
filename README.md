@@ -1,4 +1,4 @@
-# Bash File Management Toolkit
+# Bash File Management Toolkit for Linux & MacOS
 
 A collection of powerful bash scripts for efficient file management, organization, and maintenance.
 
@@ -77,10 +77,10 @@ Keeps directories synchronized across different locations.
 
 ```bash
 # Clone the repository
-git clone https://github.com/kistlerk19/linux-file-management.git
+git clone https://github.com/kistlerk19/file_management_scripting.git
 
 # Navigate to the project directory
-cd linux-file-management
+cd file_management_scripting
 
 # Make scripts executable
 chmod +x file_sorter file_renamer file_renamer duplicate_file_finder file_backup_system disk_space_analyzer file_encryption_tool file_sync
