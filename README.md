@@ -7,6 +7,7 @@ A collection of powerful bash scripts for efficient file management, organizatio
 This toolkit provides a comprehensive set of bash scripts designed to simplify file management tasks. From organizing cluttered directories to finding storage-hungry files, encrypting sensitive data, and maintaining backups, these utilities help you take control of your file system.
 
 ## Scripts Included
+The Screenshots directory contains the expected results of running the scripts.
 
 ### 1. `file_sorter`
 
